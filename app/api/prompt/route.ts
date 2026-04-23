@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      console.log(`Selected key id=${geminiKey._id} model=${geminiKey.model_name} for request`);
+
       const content = await callGeminiApi({
         apiKey: geminiKey.key_value,
         modelName: geminiKey.model_name,
@@ -112,7 +114,8 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ content, model: geminiKey.model_name });
     } catch (error) {
-      if (error instanceof GeminiApiError && error.status === 429) {
+      console.error(error);
+      if (error instanceof GeminiApiError && (error.status === 429 || error.status === 503)) {
         const ttlSeconds = error.retryAfterSeconds ?? 60;
         const rateLimitExpiry = new Date(Date.now() + ttlSeconds * 1000);
 
@@ -126,13 +129,20 @@ export async function POST(request: NextRequest) {
           },
         );
 
+        console.log(
+          `Key id=${geminiKey._id} model=${geminiKey.model_name} marked rate-limited until=${rateLimitExpiry.toISOString()}; switching to next key`,
+        );
+
         if (!loop) {
           return NextResponse.json(
             {
-              error: "Selected key is rate-limited and loop=false",
+              error:
+                error.status === 503
+                  ? "Selected key is unavailable (503) and loop=false"
+                  : "Selected key is rate-limited and loop=false",
               rate_limit_expiry: rateLimitExpiry.toISOString(),
             },
-            { status: 429 },
+            { status: error.status === 503 ? 503 : 429 },
           );
         }
 
