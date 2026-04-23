@@ -23,11 +23,11 @@ async function run() {
 
   // Upsert test internal client
   await internal.updateOne(
-    { api_key: 'bridge_secret_abc123' },
+    { api_key: 'SOME_SECURE_KEY_VALUE' },
     {
       $set: {
         client_name: 'Project-Idea-Generator',
-        api_key: 'bridge_secret_abc123',
+        api_key: 'SOME_SECURE_KEY_VALUE', // Replace with your actual secure key value
         status: 'active',
       },
     },

@@ -72,3 +72,21 @@ curl -X POST http://localhost:3000/api/prompt \
 		"loop": true
 	}'
 ```
+
+## Seed DB (development)
+
+A small one-off script is included to populate a test `internal_clients` entry and a `gemini_pool` key for local development.
+
+- Script: `scripts/seed-db.js`
+- What it inserts/upserts:
+  - `internal_clients` document with `api_key: "bridge_secret_abc123"` and `status: "active"`.
+  - `gemini_pool` document with the provided free key, `mode: "free"`, `model_name: "gemini-1.5-pro"`, and `last_used` set to epoch.
+
+Run it locally (requires `MONGO_URI` in your `.env`):
+
+```bash
+npm install dotenv
+node scripts/seed-db.js
+```
+
+The script is intended for development only — do not run against production databases.
