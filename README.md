@@ -1,37 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gemini-APi-Bridge
 
-## Getting Started
+A lightweight server-side bridge that proxies requests to Google Gemini generative models. It pools and rotates API keys using an LRU strategy, automatically fails over on rate limits, and exposes a single authenticated endpoint for client apps.
 
-First, run the development server:
+## Bridge Endpoint
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Route: `POST /api/prompt`
+- Auth header: `X-API-KEY`
+- Body:
+
+```json
+{
+	"systemprompt": "You are a concise assistant",
+	"prompt": "Write 3 startup ideas",
+	"mode": "free",
+	"loop": true
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## MongoDB Collections
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### `internal_clients`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```json
+{
+	"client_name": "Project-Idea-Generator",
+	"api_key": "bridge_secret_abc123",
+	"status": "active"
+}
+```
 
-## Learn More
+### `gemini_pool`
 
-To learn more about Next.js, take a look at the following resources:
+```json
+{
+	"key_value": "AIzaSy...",
+	"mode": "free",
+	"model_name": "gemini-1.5-pro",
+	"last_used": "2026-04-23T10:30:00.000Z",
+	"is_rate_limited": false,
+	"rate_limit_expiry": null
+}
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Request Processing Logic
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Validate `X-API-KEY` against `internal_clients` with `status: "active"`.
+2. Fetch candidate keys from `gemini_pool` by `mode`.
+3. Apply LRU ordering using `sort({ last_used: 1, _id: 1 })`.
+4. Exclude currently rate-limited keys unless `rate_limit_expiry` has passed.
+5. If `loop=true`, fail over across keys on `429`.
+6. If `loop=false`, only the first LRU key is attempted.
+7. On success, return `{ content, model }` and update `last_used`.
+8. On `429`, set `is_rate_limited=true` and future `rate_limit_expiry`.
 
-## Deploy on Vercel
+## Database Indexes (Auto-created)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `internal_clients.api_key` (unique)
+- `gemini_pool.mode + is_rate_limited + rate_limit_expiry + last_used`
+- `gemini_pool.mode + last_used`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# Gemini-APi-Bridge
+## Quick Test
+
+```bash
+curl -X POST http://localhost:3000/api/prompt \
+	-H "Content-Type: application/json" \
+	-H "X-API-KEY: bridge_secret_abc123" \
+	-d '{
+		"systemprompt": "Be direct",
+		"prompt": "Generate one product idea",
+		"mode": "free",
+		"loop": true
+	}'
+```
